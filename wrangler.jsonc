@@ -1,0 +1,41 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "gani-copilot",
+  "compatibility_date": "2026-09-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "ai": { "binding": "AI" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "gani-copilot-db", "database_id": "3502d8f8-4c5b-46c5-a6c0-153890070527", "migrations_dir": "migrations" }
+  ],
+  "r2_buckets": [
+    { "binding": "DOCUMENTS", "bucket_name": "gani-copilot-documents" }
+  ],
+  "vectorize": [
+    { "binding": "VECTORIZE", "index_name": "gani-civic-records" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "GANI_CONVERSATION", "class_name": "GaniConversationAgent" }
+    ]
+  },
+  "migrations": [
+    { "tag": "conversation-agent-v1", "new_sqlite_classes": ["GaniConversationAgent"] }
+  ],
+  "vars": {
+    "ENVIRONMENT": "production",
+    "ADMIN_EMAIL": "profshehu94@gmail.com",
+    "AI_MODEL": "@cf/openai/gpt-oss-20b",
+    "OLLAMA_BASE_URL": "",
+    "OLLAMA_MODEL": "gpt-oss:20b",
+    "TURNSTILE_SITE_KEY": ""
+  }
+,
+  "main": "./worker/index.ts"
+,
+  "assets": { "directory": "dist/client", "not_found_handling": "none", "binding": "ASSETS" }
+,
+  "cache": { "enabled": true }
+,
+  "version_metadata": { "binding": "CF_VERSION_METADATA" }
+}

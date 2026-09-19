@@ -1,0 +1,13 @@
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE governments (id TEXT PRIMARY KEY, name TEXT NOT NULL, government_type TEXT NOT NULL, country TEXT NOT NULL, state TEXT, year INTEGER NOT NULL);
+CREATE TABLE sectors (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, description TEXT);
+CREATE TABLE locations (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, parent_id TEXT REFERENCES locations(id), senatorial_zone TEXT, state TEXT, latitude REAL, longitude REAL);
+CREATE TABLE mdas (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT, sector_id TEXT REFERENCES sectors(id), government_id TEXT REFERENCES governments(id));
+CREATE TABLE documents (id TEXT PRIMARY KEY, title TEXT NOT NULL, document_type TEXT NOT NULL, government_id TEXT REFERENCES governments(id), year INTEGER NOT NULL, issuing_authority TEXT NOT NULL, r2_key TEXT, original_url TEXT, publication_date TEXT, indexed_at TEXT, processing_status TEXT NOT NULL DEFAULT 'pending', page_count INTEGER, checksum TEXT);
+CREATE TABLE budgets (id TEXT PRIMARY KEY, government_id TEXT REFERENCES governments(id), budget_year INTEGER NOT NULL, title TEXT NOT NULL, total_budget INTEGER NOT NULL, capital_expenditure INTEGER NOT NULL, recurrent_expenditure INTEGER NOT NULL, source_document_id TEXT REFERENCES documents(id), status TEXT NOT NULL);
+CREATE TABLE projects (id TEXT PRIMARY KEY, project_code TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT, budget_year INTEGER NOT NULL, sector_id TEXT REFERENCES sectors(id), mda_id TEXT REFERENCES mdas(id), location_id TEXT REFERENCES locations(id), approved_amount INTEGER NOT NULL, released_amount INTEGER, capital_or_recurrent TEXT NOT NULL CHECK (capital_or_recurrent IN ('Capital','Recurrent')), contractor TEXT, expected_completion TEXT, official_status TEXT, verification_status TEXT NOT NULL, source_document_id TEXT REFERENCES documents(id), source_page INTEGER, source_reference TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE community_reports (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), report_status TEXT NOT NULL CHECK (report_status IN ('Completed','Ongoing','Not Started','Cannot Confirm')), observation TEXT, evidence_r2_key TEXT, submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, moderation_status TEXT NOT NULL DEFAULT 'pending', verification_status TEXT NOT NULL DEFAULT 'unverified', anonymous_identifier TEXT);
+CREATE INDEX projects_location_idx ON projects(location_id, budget_year);
+CREATE INDEX projects_sector_idx ON projects(sector_id, budget_year);
+CREATE INDEX community_reports_project_idx ON community_reports(project_id, submitted_at);
