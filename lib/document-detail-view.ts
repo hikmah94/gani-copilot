@@ -1,4 +1,7 @@
+import { documentDownloadHref, documentViewerSource, publisherHost } from "./document-file.ts";
+
 export type DocumentDetailFields = {
+  id?: string;
   title: string;
   document_type: string;
   government_name: string | null;
@@ -21,6 +24,8 @@ export function documentDetailView(document: DocumentDetailFields) {
     { label: "MDAs identified", value: document.mda_count },
     { label: "Sectors identified", value: document.sector_count },
   ].filter((item) => item.value > 0);
+  const id = document.id ?? "";
+  const viewer = documentViewerSource({ id, r2_key: document.r2_key, original_url: document.original_url });
   return {
     title: document.title,
     documentType: document.document_type.replaceAll("_", " "),
@@ -30,8 +35,9 @@ export function documentDetailView(document: DocumentDetailFields) {
     publicationDate: document.publication_date?.slice(0, 10) || "Not recorded",
     indexingDate: document.indexed_at?.slice(0, 10) || "Not indexed",
     pageCount: document.page_count ?? "Not recorded",
-    sourceUrl: document.original_url,
-    originalHref: document.original_url,
+    viewer,
+    downloadHref: viewer.kind === "none" ? null : documentDownloadHref(id),
+    publisher: publisherHost(document.original_url),
     canAsk:
       document.processing_status === "ready" ||
       document.processing_status === "indexed",

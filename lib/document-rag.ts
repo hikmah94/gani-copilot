@@ -32,7 +32,7 @@ export function parseDocumentAnswer(raw: string, passages: ValidPassage[], docum
   const verified = sources.length > 0;
   const textList = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
   return {
-    answer: verified ? parsed.answer.trim() : "I couldn't verify an answer from the retrieved passages of this document.",
+    answer: verified ? parsed.answer.trim() : "I couldn't find a passage in this document that answers this. Try naming a ministry, programme, or page, or use Search inside to look through the text.",
     summary: verified && typeof parsed.summary === "string" ? parsed.summary.trim() : "",
     facts: verified ? textList(parsed.facts) : [],
     calculations: [],

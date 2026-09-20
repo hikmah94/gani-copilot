@@ -36,12 +36,18 @@ export async function runAiModel(systemPrompt: string, message: string, provider
     const answer = await runOllama(systemPrompt, message);
     return { answer, provider: "ollama", model: env.OLLAMA_MODEL || "gpt-oss:20b" };
   }
-  const result = await env.AI.run(env.AI_MODEL || "@cf/openai/gpt-oss-20b", {
-    messages: [{ role: "system", content: systemPrompt }, { role: "user", content: message }],
-    max_tokens: 700,
-    temperature: 0.2,
-  }) as ModelResult;
-  const answer = extractAnswer(result);
+  // gpt-oss spends part of max_tokens on hidden reasoning; a low effort and a larger cap keep
+  // long, table-heavy document passages from leaving no visible answer. Retry once if it still does.
+  let answer: string | undefined;
+  for (let attempt = 0; attempt < 2 && !answer; attempt++) {
+    const result = await env.AI.run(env.AI_MODEL || "@cf/openai/gpt-oss-20b", {
+      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: message }],
+      max_tokens: 1600,
+      reasoning_effort: "low",
+      temperature: 0.2,
+    }) as ModelResult;
+    answer = extractAnswer(result);
+  }
   if (!answer) throw new Error("Workers AI returned an empty response");
   return { answer, provider: "cloudflare", model: env.AI_MODEL || "@cf/openai/gpt-oss-20b" };
 }

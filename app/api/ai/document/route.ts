@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { scopedDocumentMatches } from "@/lib/document-vector-search";
 import { normalizeDocumentQuestion, parseDocumentAnswer, validateDocumentPassages, type DocumentChunk } from "@/lib/document-rag";
+import { ftsQuery, mergeMatches } from "@/lib/document-lexical";
 import { runAiModel } from "@/lib/ai-model";
 import { recordAiUsage } from "@/lib/ai-telemetry";
 import { hashIp } from "@/lib/ip-hash";
@@ -29,7 +30,13 @@ export async function POST(request: Request) {
     const embedded = await env.AI.run("@cf/baai/bge-base-en-v1.5", { text: [message] }) as { data?: number[][] };
     const vector = embedded.data?.[0];
     if (!vector?.length) throw new Error("Unable to search this document right now.");
-    const matches = await scopedDocumentMatches(env.VECTORIZE, vector, documentId);
+    const vectorMatches = await scopedDocumentMatches(env.VECTORIZE, vector, documentId);
+    // Embeddings under-rank dense budget tables and exact terms, so add the best keyword matches too.
+    const query = ftsQuery(message);
+    const lexical = query ? await env.DB.prepare(
+      "SELECT c.id FROM document_chunks_fts f JOIN document_chunks c ON c.rowid=f.rowid WHERE document_chunks_fts MATCH ?1 AND c.document_id=?2 ORDER BY bm25(document_chunks_fts) LIMIT 4"
+    ).bind(query, documentId).all<{ id: string }>().catch(() => ({ results: [] as { id: string }[] })) : { results: [] as { id: string }[] };
+    const matches = mergeMatches(vectorMatches, (lexical.results ?? []).map((row) => row.id), documentId);
     const ids = matches.map((match) => match.id);
     const rows = ids.length ? await env.DB.prepare(
       `SELECT id,document_id,page,text FROM document_chunks WHERE document_id=?1 AND id IN (${ids.map(() => "?").join(",")})`
@@ -49,8 +56,19 @@ DOCUMENT EXCERPTS:
 ${JSON.stringify(matchedChunks)}`;
 
     const provider = body.provider === "ollama" ? "ollama" : "cloudflare";
-    const result = await runAiModel(systemPrompt, message, provider);
-    const structured = parseDocumentAnswer(result.answer, matchedChunks, documentId, doc.title);
+    let result = await runAiModel(systemPrompt, message, provider);
+    let structured = parseDocumentAnswer(result.answer, matchedChunks, documentId, doc.title);
+    if (!structured.sources.length) {
+      // The model sometimes answers without citing an excerpt id. Ask once more, naming the valid ids;
+      // an answer that still cites nothing stays "unable to verify".
+      const retryPrompt = `${systemPrompt}\n\nREMINDER: source_ids must list at least one of these exact IDs for the excerpts you used: ${matchedChunks.map((chunk) => chunk.id).join(", ")}. If none of the excerpts answer the question, say so and leave source_ids empty.`;
+      try {
+        const retry = await runAiModel(retryPrompt, message, provider);
+        const retried = parseDocumentAnswer(retry.answer, matchedChunks, documentId, doc.title);
+        if (retried.sources.length) { result = retry; structured = retried; }
+      } catch { /* keep the first, unverified result */ }
+    }
+    if (!structured.sources.length) console.warn(JSON.stringify({ event: "ai_document_unverified", documentId, passages: matchedChunks.map((chunk) => chunk.id), raw: result.answer.slice(0, 500) }));
     await recordAiUsage({ provider: result.provider, model: result.model, queryType: "document", documentId, status: "success", latencyMs: Date.now() - started, inputChars: message.length, outputChars: structured.answer.length, evidenceCount: structured.sources.length });
     return Response.json({ ...structured, provider: result.provider, model: result.model, evidence: structured.sources.map(source => ({ page: source.page, snippet: source.snippet, chunk_id: source.chunk_id, documentTitle: doc.title, issuingAuthority: doc.issuing_authority, year: doc.year, documentType: doc.document_type, sourceUrl: doc.original_url, indexedAt: doc.indexed_at, href: source.href })) });
   } catch (error) {

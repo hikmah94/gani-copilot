@@ -127,6 +127,12 @@ npm run deploy:vinext
 
 Official PDFs are deliberately not committed to Git because they would add more than 120 MB and are not relicensed by this project. The deployed application serves controlled copies from its document storage and retains original publisher provenance. A new deployment should ingest the records from their documented sources into its own R2 bucket.
 
+### Reading, previewing, and indexing documents
+
+- **Reader.** `/documents/[id]` embeds the browser's native PDF viewer against `/api/documents/[id]/file`, which serves the stored R2 copy with byte-range support and falls back to a recorded PDF on an allow-listed public host. Readers never navigate to, or embed, another website. On phones the embedded viewer is replaced by a same-site "Open PDF reader" action.
+- **Library previews.** Cards use first-page covers in `public/document-previews/<document-id>.jpg`, generated with macOS `sips -s format jpeg --resampleWidth 640 <pdf> --out <jpg>`. Records without a cover get a designed fallback.
+- **Indexing.** `node scripts/index-documents.mjs <outDir>` extracts each PDF's text layer, chunks it by page, embeds the chunks with `@cf/baai/bge-base-en-v1.5` (via `EMBED_URL`, e.g. a temporary `wrangler dev` worker with a remote AI binding) and writes `<id>.sql` and `<id>.vectors.ndjson`. Apply them with `wrangler d1 execute gani-copilot-db --remote --file <id>.sql` and `wrangler vectorize insert gani-civic-records --file <id>.vectors.ndjson`. Scanned PDFs without a text layer need OCR first (`scripts/ocr-pdf.swift`).
+
 ## Repository guide
 
 ```text
@@ -142,8 +148,8 @@ docs/         Architecture, data methodology, judging guide, and roadmap
 ## Known proof-of-concept limitations
 
 - Coverage is currently Niger State-focused and is not a complete or independently audited register of spending or delivery.
-- The 2026 Citizens Budget has stored passages but requires an authenticated Vectorize indexing run before document Q&A is demonstrable.
-- The separate detailed-estimates record currently has no stored passages for semantic retrieval.
+- Document Q&A retrieves by embeddings plus keyword matching and answers only from cited passages. On dense line-item tables it can miss the right passage or read a different row, so it may decline to answer or vary between runs; check the cited pages in the reader, and prefer the structured budget tools for totals.
+- The 2017 record has metadata but no PDF, so it has no reader or searchable passages.
 - Turnstile and the fuller operational abuse-prevention plan are not yet enabled in the public deployment.
 - Community observations depend on administrator review and do not verify physical delivery by themselves.
 - Some historic source totals are rounded exactly as published in the source documents.
